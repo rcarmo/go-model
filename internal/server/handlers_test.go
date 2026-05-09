@@ -6196,7 +6196,7 @@ func TestProviderPassthrough_PrefersContextRequestID(t *testing.T) {
 	}
 }
 
-func TestProviderPassthrough_NormalizesErrorResponse(t *testing.T) {
+func TestProviderPassthrough_PreservesErrorResponse(t *testing.T) {
 	provider := &mockProvider{
 		passthroughResponse: &core.PassthroughResponse{
 			StatusCode: http.StatusNotFound,
@@ -6221,8 +6221,8 @@ func TestProviderPassthrough_NormalizesErrorResponse(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
-	if got := rec.Header().Get("X-Upstream"); got != "" {
-		t.Fatalf("X-Upstream should not be forwarded on normalized errors, got %q", got)
+	if got := rec.Header().Get("X-Upstream"); got != "openai" {
+		t.Fatalf("X-Upstream = %q, want openai", got)
 	}
 	if body := rec.Body.String(); !strings.Contains(body, `"message":"upstream missing"`) || !strings.Contains(body, `"error"`) {
 		t.Fatalf("unexpected error body: %s", body)
