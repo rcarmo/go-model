@@ -303,7 +303,11 @@
                         return;
                     }
                     this.oauthSessionID = session.id;
-                    this.oauthNotice = 'OAuth flow started. Complete verification in the opened page.';
+                    this.oauthAuthURL = session.authUrl || '';
+                    this.oauthInstructions = session.instructions || '';
+                    this.oauthNotice = this.oauthAuthURL
+                        ? 'OAuth flow started. Click the verification link below.'
+                        : 'OAuth flow started. Waiting for verification link...';
                     await this.pollOAuthSession(session.id);
                 } catch (e) {
                     console.error('Failed to start oauth flow:', e);

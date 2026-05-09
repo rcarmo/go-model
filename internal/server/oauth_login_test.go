@@ -99,6 +99,9 @@ func TestOAuthStartAndSession(t *testing.T) {
 	}
 	session := start["session"].(map[string]any)
 	id := session["id"].(string)
+	if got := session["authUrl"]; got != "https://example.com" {
+		t.Fatalf("authUrl=%v, want https://example.com", got)
+	}
 
 	var got map[string]any
 	for i := 0; i < 20; i++ {
