@@ -92,6 +92,8 @@ Example model identifiers are illustrative and subject to change; consult provid
 | Provider      | Credential                                                        | Example Model                      | Chat | `/responses` | Embed | Files | Batches | Passthru |
 | ------------- | ----------------------------------------------------------------- | ---------------------------------- | :--: | :----------: | :---: | :---: | :-----: | :------: |
 | OpenAI        | `OPENAI_API_KEY`                                                  | `gpt-5.5`                          |  ✅  |      ✅      |  ✅   |  ✅   |   ✅    |    ✅    |
+| OpenAI Codex  | `OPENAI_CODEX_REFRESH_TOKEN` (or `OPENAI_CODEX_API_KEY`)          | `codex-mini-latest`                |  ✅  |      ✅      |  ✅   |  ✅   |   ✅    |    ✅    |
+| GitHub Copilot| `GITHUB_COPILOT_REFRESH_TOKEN` (or `GITHUB_COPILOT_API_KEY`)      | `gpt-4o-mini`                      |  ✅  |      ✅      |  ✅   |  ✅   |   ✅    |    ✅    |
 | Anthropic     | `ANTHROPIC_API_KEY`                                               | `claude-sonnet-4-20250514`         |  ✅  |      ✅      |  ❌   |  ❌   |   ✅    |    ✅    |
 | Google Gemini | `GEMINI_API_KEY`                                                   | `gemini-2.5-flash`                 |  ✅  |      ✅      |  ✅   |  ✅   |   ✅    |    ❌    |
 | Vertex AI     | `VERTEX_PROJECT` + `VERTEX_LOCATION`                               | `google/gemini-2.5-flash`          |  ✅  |      ✅      |  ✅   |  ❌   |   ❌    |    ❌    |
@@ -120,6 +122,12 @@ to expose only configured models for providers that define a list, skipping
 their upstream `/models` calls.
 For vLLM, set `VLLM_API_KEY` only if the upstream server was started with
 `--api-key`.
+For `openai-codex` and `github-copilot`, GoModel supports OAuth token reuse and
+automatic renewal from refresh tokens. Set `OPENAI_CODEX_REFRESH_TOKEN` and/or
+`GITHUB_COPILOT_REFRESH_TOKEN` (or their `_API_KEY` compatibility aliases). The
+proxy persists refreshed access tokens in `GOMODEL_OAUTH_TOKEN_STORE`
+(default: `/workspace/tmp/gomodel-oauth-tokens.json`) so one proxy session can
+serve multiple machines without repeated logins.
 To register multiple instances of the same provider type without `config.yaml`,
 use suffixed env vars such as `OPENAI_EAST_API_KEY` and
 `OPENAI_EAST_BASE_URL`; add `OPENAI_EAST_MODELS` to configure that instance's
@@ -257,7 +265,7 @@ Key settings:
 | `GOMODEL_MASTER_KEY`            | (none)                                 | API key for authentication                                                       |
 | `ENABLE_PASSTHROUGH_ROUTES`     | `true`                                 | Enable provider-native passthrough routes under `/p/{provider}/...`              |
 | `ALLOW_PASSTHROUGH_V1_ALIAS`    | `true`                                 | Allow `/p/{provider}/v1/...` aliases while keeping `/p/{provider}/...` canonical |
-| `ENABLED_PASSTHROUGH_PROVIDERS` | `openai,anthropic,openrouter,zai,vllm` | Comma-separated list of enabled passthrough providers                            |
+| `ENABLED_PASSTHROUGH_PROVIDERS` | `openai,anthropic,openrouter,zai,vllm,openai-codex,github-copilot` | Comma-separated list of enabled passthrough providers                            |
 | `GEMINI_API_MODE`               | `native`                               | Gemini AI Studio upstream mode: `native` or `openai_compatible`                 |
 | `VERTEX_API_MODE`               | `native`                               | Vertex AI Gemini upstream mode: `native` or `openai_compatible`                 |
 | `USE_GOOGLE_GEMINI_NATIVE_API`  | `true`                                 | Legacy global Gemini mode toggle used when per-provider `*_API_MODE` is unset   |

@@ -519,6 +519,8 @@ func buildDefaultConfig() *Config {
 				"openrouter",
 				"zai",
 				"vllm",
+				"openai-codex",
+				"github-copilot",
 			},
 		},
 		Models: ModelsConfig{

@@ -20,10 +20,12 @@ import (
 	"gomodel/internal/providers/azure"
 	"gomodel/internal/providers/deepseek"
 	"gomodel/internal/providers/gemini"
+	"gomodel/internal/providers/githubcopilot"
 	"gomodel/internal/providers/groq"
 	"gomodel/internal/providers/minimax"
 	"gomodel/internal/providers/ollama"
 	"gomodel/internal/providers/openai"
+	"gomodel/internal/providers/openaicodex"
 	"gomodel/internal/providers/openrouter"
 	"gomodel/internal/providers/oracle"
 	"gomodel/internal/providers/vertex"
@@ -124,6 +126,8 @@ func main() {
 	factory.Add(deepseek.Registration)
 	factory.Add(gemini.Registration)
 	factory.Add(vertex.Registration)
+	factory.Add(githubcopilot.Registration)
+	factory.Add(openaicodex.Registration)
 	factory.Add(groq.Registration)
 	factory.Add(minimax.Registration)
 	factory.Add(ollama.Registration)
