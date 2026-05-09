@@ -21,6 +21,15 @@ type providerState struct {
 	Creds      *goaioauth.Credentials `json:"credentials"`
 }
 
+// ProviderStatus is a redacted auth status payload for UX/API usage.
+type ProviderStatus struct {
+	ProviderID         string `json:"providerId"`
+	Configured         bool   `json:"configured"`
+	HasRefreshToken    bool   `json:"hasRefreshToken"`
+	HasAccessToken     bool   `json:"hasAccessToken"`
+	AccessTokenExpires int64  `json:"accessTokenExpires"`
+}
+
 type tokenStoreFile struct {
 	Providers map[string]*providerState `json:"providers"`
 }
@@ -31,6 +40,16 @@ type Manager struct {
 	mu        sync.Mutex
 	storePath string
 	states    map[string]*providerState
+}
+
+var (
+	defaultManager *Manager
+	defaultOnce    sync.Once
+)
+
+func DefaultManager() *Manager {
+	defaultOnce.Do(func() { defaultManager = NewManager() })
+	return defaultManager
 }
 
 func NewManager() *Manager {
@@ -44,11 +63,19 @@ func NewManager() *Manager {
 }
 
 func (m *Manager) SetInitial(providerID, refresh, access string, expires int64, extra map[string]interface{}) {
-	if strings.TrimSpace(providerID) == "" {
-		return
+	_ = m.UpsertCredentials(providerID, refresh, access, expires, extra)
+}
+
+func (m *Manager) UpsertCredentials(providerID, refresh, access string, expires int64, extra map[string]interface{}) error {
+	providerID = strings.TrimSpace(providerID)
+	if providerID == "" {
+		return fmt.Errorf("provider id is required")
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := m.loadLocked(); err != nil {
+		return err
+	}
 	st := m.states[providerID]
 	if st == nil {
 		st = &providerState{ProviderID: providerID, Creds: &goaioauth.Credentials{}}
@@ -69,7 +96,29 @@ func (m *Manager) SetInitial(providerID, refresh, access string, expires int64, 
 	if extra != nil {
 		st.Creds.Extra = extra
 	}
-	_ = m.saveLocked()
+	return m.saveLocked()
+}
+
+func (m *Manager) Status(providerID string) (ProviderStatus, error) {
+	providerID = strings.TrimSpace(providerID)
+	status := ProviderStatus{ProviderID: providerID}
+	if providerID == "" {
+		return status, fmt.Errorf("provider id is required")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.loadLocked(); err != nil {
+		return status, err
+	}
+	st := m.states[providerID]
+	if st == nil || st.Creds == nil {
+		return status, nil
+	}
+	status.Configured = true
+	status.HasRefreshToken = strings.TrimSpace(st.Creds.Refresh) != ""
+	status.HasAccessToken = strings.TrimSpace(st.Creds.Access) != ""
+	status.AccessTokenExpires = st.Creds.Expires
+	return status, nil
 }
 
 func (m *Manager) GetAccessToken(providerID string) (string, *goaioauth.Credentials, error) {

@@ -124,8 +124,11 @@ For vLLM, set `VLLM_API_KEY` only if the upstream server was started with
 `--api-key`.
 For `openai-codex` and `github-copilot`, GoModel supports OAuth token reuse and
 automatic renewal from refresh tokens. Set `OPENAI_CODEX_REFRESH_TOKEN` and/or
-`GITHUB_COPILOT_REFRESH_TOKEN` (or their `_API_KEY` compatibility aliases). The
-proxy persists refreshed access tokens in `GOMODEL_OAUTH_TOKEN_STORE`
+`GITHUB_COPILOT_REFRESH_TOKEN` (or their `_API_KEY` compatibility aliases), or
+use the built-in login UX at `GET /auth/login` to save refresh tokens.
+Status is available at `GET /auth/status/openai-codex` and
+`GET /auth/status/github-copilot`.
+The proxy persists refreshed access tokens in `GOMODEL_OAUTH_TOKEN_STORE`
 (default: `/workspace/tmp/gomodel-oauth-tokens.json`) so one proxy session can
 serve multiple machines without repeated logins.
 To register multiple instances of the same provider type without `config.yaml`,

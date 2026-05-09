@@ -143,7 +143,7 @@ func New(provider core.RoutableProvider, cfg *Config) *Server {
 	}
 
 	// Build list of paths that skip authentication
-	authSkipPaths := []string{"/health"}
+	authSkipPaths := []string{"/health", "/auth/login", "/auth/status/*"}
 
 	// Determine metrics path
 	metricsPath := "/metrics"
@@ -281,6 +281,11 @@ func New(provider core.RoutableProvider, cfg *Config) *Server {
 			return nil
 		})
 	}
+
+	// OAuth login UX routes
+	e.GET("/auth/login", handler.OAuthLoginUI)
+	e.POST("/auth/login", handler.OAuthLogin)
+	e.GET("/auth/status/:provider", handler.OAuthStatus)
 
 	// API routes
 	if cfg == nil || !cfg.DisablePassthroughRoutes {

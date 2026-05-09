@@ -28,7 +28,7 @@ var Registration = providers.Registration{
 	},
 }
 
-var manager = oauthproxy.NewManager()
+var manager = oauthproxy.DefaultManager()
 
 type Provider struct {
 	*openai.CompatibleProvider
