@@ -12,6 +12,15 @@
     function dashboardProvidersModule() {
         return {
             providerStatusDetailsExpanded: false,
+            oauthProvider: 'openai-codex',
+            oauthEnterpriseDomain: '',
+            oauthStarting: false,
+            oauthSessionID: '',
+            oauthAuthURL: '',
+            oauthInstructions: '',
+            oauthNotice: '',
+            oauthError: '',
+            oauthStatuses: [],
 
             emptyProviderStatus() {
                 return {
@@ -230,6 +239,109 @@
                     : [];
                 if (models.length === 0) return 'Automatic';
                 return models.join(', ');
+            },
+
+            async fetchProvidersPage() {
+                await Promise.all([
+                    this.fetchProviderStatus(),
+                    this.refreshOAuthStatuses()
+                ]);
+            },
+
+            async refreshOAuthStatuses() {
+                this.oauthError = '';
+                const providers = ['openai-codex', 'github-copilot'];
+                const statuses = [];
+                for (const provider of providers) {
+                    try {
+                        const request = typeof this.requestOptions === 'function' ? this.requestOptions() : { headers: this.headers() };
+                        const res = await fetch('/auth/status/' + encodeURIComponent(provider), request);
+                        const handled = this.handleFetchResponse(res, 'oauth status', request);
+                        if (typeof this.isStaleAuthFetchResult === 'function' && this.isStaleAuthFetchResult(handled)) {
+                            return;
+                        }
+                        if (!handled) {
+                            return;
+                        }
+                        const data = await res.json();
+                        statuses.push(data || { providerId: provider });
+                    } catch (e) {
+                        console.error('Failed to fetch oauth status:', provider, e);
+                        statuses.push({ providerId: provider, configured: false, hasRefreshToken: false, hasAccessToken: false, accessTokenExpires: 0 });
+                    }
+                }
+                this.oauthStatuses = statuses;
+            },
+
+            async startOAuthFlow() {
+                if (this.oauthStarting) return;
+                this.oauthStarting = true;
+                this.oauthError = '';
+                this.oauthNotice = '';
+                this.oauthAuthURL = '';
+                this.oauthInstructions = '';
+
+                try {
+                    const request = typeof this.requestOptions === 'function' ? this.requestOptions({ method: 'POST' }) : { method: 'POST', headers: this.headers() };
+                    request.body = JSON.stringify({
+                        provider: this.oauthProvider,
+                        enterprise_domain: this.oauthEnterpriseDomain
+                    });
+                    const res = await fetch('/auth/oauth/start', request);
+                    const handled = this.handleFetchResponse(res, 'oauth start', request);
+                    if (typeof this.isStaleAuthFetchResult === 'function' && this.isStaleAuthFetchResult(handled)) {
+                        return;
+                    }
+                    if (!handled) {
+                        this.oauthError = 'Failed to start OAuth flow.';
+                        return;
+                    }
+                    const payload = await res.json();
+                    const session = payload && payload.session ? payload.session : null;
+                    if (!session || !session.id) {
+                        this.oauthError = 'Invalid OAuth session response.';
+                        return;
+                    }
+                    this.oauthSessionID = session.id;
+                    this.oauthNotice = 'OAuth flow started. Complete verification in the opened page.';
+                    await this.pollOAuthSession(session.id);
+                } catch (e) {
+                    console.error('Failed to start oauth flow:', e);
+                    this.oauthError = 'Failed to start OAuth flow.';
+                } finally {
+                    this.oauthStarting = false;
+                }
+            },
+
+            async pollOAuthSession(sessionID) {
+                const maxAttempts = 150;
+                for (let i = 0; i < maxAttempts; i++) {
+                    const request = typeof this.requestOptions === 'function' ? this.requestOptions() : { headers: this.headers() };
+                    const res = await fetch('/auth/oauth/session/' + encodeURIComponent(sessionID), request);
+                    const handled = this.handleFetchResponse(res, 'oauth session', request);
+                    if (typeof this.isStaleAuthFetchResult === 'function' && this.isStaleAuthFetchResult(handled)) {
+                        return;
+                    }
+                    if (!handled) {
+                        this.oauthError = 'Failed to fetch OAuth session state.';
+                        return;
+                    }
+                    const session = await res.json();
+                    this.oauthAuthURL = session.authUrl || '';
+                    this.oauthInstructions = session.instructions || '';
+                    if (session.state === 'complete') {
+                        this.oauthNotice = 'OAuth login complete and token stored.';
+                        this.oauthError = '';
+                        await this.refreshOAuthStatuses();
+                        return;
+                    }
+                    if (session.state === 'error') {
+                        this.oauthError = session.error || 'OAuth login failed.';
+                        return;
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, 2000));
+                }
+                this.oauthError = 'OAuth login timed out waiting for verification.';
             }
         };
     }

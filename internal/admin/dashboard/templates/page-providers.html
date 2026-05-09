@@ -1,0 +1,63 @@
+{{define "dashboard-page-providers"}}
+<template x-if="page==='providers'">
+<div>
+  <div class="page-header"><div><h2>Providers</h2></div></div>
+  {{template "auth-banner" .}}
+
+  <div class="settings-panel">
+    <div class="settings-panel-header">
+      <h3>OAuth Providers</h3>
+      <p class="muted">Configure OpenAI Codex and GitHub Copilot without env vars.</p>
+    </div>
+
+    <div class="settings-form-grid">
+      <div class="form-field">
+        <label class="form-field-label" for="oauth-provider">Provider</label>
+        <select id="oauth-provider" class="form-select settings-select" x-model="oauthProvider">
+          <option value="openai-codex">openai-codex</option>
+          <option value="github-copilot">github-copilot</option>
+        </select>
+      </div>
+      <div class="form-field" x-show="oauthProvider==='github-copilot'">
+        <label class="form-field-label" for="oauth-enterprise-domain">Enterprise domain (optional)</label>
+        <input id="oauth-enterprise-domain" class="form-input" type="text" x-model="oauthEnterpriseDomain" placeholder="company.ghe.com">
+      </div>
+    </div>
+
+    <div class="settings-refresh-actions">
+      <button type="button" class="pagination-btn pagination-btn-primary pagination-btn-with-icon" :disabled="oauthStarting" @click="startOAuthFlow()">
+        <i data-lucide="log-in" class="form-action-icon" aria-hidden="true"></i><span>Start OAuth Login</span>
+      </button>
+      <button type="button" class="pagination-btn" @click="refreshOAuthStatuses()">Refresh Status</button>
+    </div>
+
+    <div class="alert alert-warning settings-refresh-alert" x-show="oauthError" x-text="oauthError"></div>
+    <div class="alert alert-success settings-refresh-alert" x-show="oauthNotice" x-text="oauthNotice"></div>
+
+    <div class="settings-refresh-section" x-show="oauthAuthURL">
+      <h3>Verification</h3>
+      <p><a :href="oauthAuthURL" target="_blank" rel="noreferrer" x-text="oauthInstructions || 'Open verification link'"></a></p>
+      <p class="muted">Complete verification in the opened page; status updates automatically.</p>
+    </div>
+
+    <div class="settings-refresh-section">
+      <h3>Stored token status</h3>
+      <table class="models-table">
+        <thead><tr><th>Provider</th><th>Configured</th><th>Refresh token</th><th>Access token</th><th>Expires</th></tr></thead>
+        <tbody>
+          <template x-for="row in oauthStatuses" :key="row.providerId">
+            <tr>
+              <td x-text="row.providerId"></td>
+              <td x-text="row.configured ? 'yes' : 'no'"></td>
+              <td x-text="row.hasRefreshToken ? 'yes' : 'no'"></td>
+              <td x-text="row.hasAccessToken ? 'yes' : 'no'"></td>
+              <td x-text="row.accessTokenExpires ? formatTimestamp(row.accessTokenExpires) : '-' "></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</template>
+{{end}}

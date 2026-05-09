@@ -209,6 +209,7 @@ function dashboard() {
         "audit-logs",
         "guardrails",
         "auth-keys",
+        "providers",
         "settings",
       ].includes(page)
         ? page
@@ -224,6 +225,8 @@ function dashboard() {
       if (page === "audit-logs") this.fetchAuditLog(true);
       if (page === "auth-keys" && typeof this.fetchAuthKeys === "function")
         this.fetchAuthKeys();
+      if (page === "providers" && typeof this.fetchProvidersPage === "function")
+        this.fetchProvidersPage();
       if (
         page === "workflows" &&
         typeof this.fetchWorkflowsPage === "function"
