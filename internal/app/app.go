@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -26,13 +27,17 @@ import (
 	"gomodel/internal/fallback"
 	"gomodel/internal/guardrails"
 	"gomodel/internal/modeloverrides"
+	"gomodel/internal/oauthcreds"
 	"gomodel/internal/pricingoverrides"
 	"gomodel/internal/providers"
+	"gomodel/internal/providers/oauthproxy"
 	"gomodel/internal/responsecache"
 	"gomodel/internal/server"
 	"gomodel/internal/storage"
 	"gomodel/internal/usage"
 	"gomodel/internal/workflows"
+
+	goaioauth "github.com/rcarmo/go-ai/oauth"
 )
 
 // App represents the main application with all its dependencies.
@@ -48,6 +53,7 @@ type App struct {
 	modelOverrides   *modeloverrides.Result
 	pricingOverrides *pricingoverrides.Result
 	authKeys         *authkeys.Result
+	oauthCreds       *oauthcreds.Result
 	guardrails       *guardrails.Result
 	workflows        *workflows.Result
 	server           *server.Server
@@ -350,6 +356,39 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	}
 	app.authKeys = authKeyResult
 
+	var oauthCredResult *oauthcreds.Result
+	sharedOAuthCredStorage := firstSharedStorage(
+		auditResult.Storage,
+		usageResult.Storage,
+		batchResult.Storage,
+		aliasResult.Storage,
+		modelOverrideResult.Storage,
+		pricingOverrideResult.Storage,
+		guardrailResult.Storage,
+		workflowResult.Storage,
+		authKeyResult.Storage,
+	)
+	if sharedOAuthCredStorage != nil {
+		oauthCredResult, err = oauthcreds.NewWithSharedStorage(ctx, sharedOAuthCredStorage)
+	} else {
+		oauthCredResult, err = oauthcreds.New(ctx, appCfg)
+	}
+	if err != nil {
+		closeErr := errors.Join(authKeyResult.Close(), workflowResult.Close(), app.guardrails.Close(), app.pricingOverrides.Close(), app.modelOverrides.Close(), app.aliases.Close(), app.batch.Close(), app.budgets.Close(), app.usage.Close(), app.audit.Close(), app.providers.Close())
+		if closeErr != nil {
+			return nil, fmt.Errorf("failed to initialize oauth credentials: %w (also: close error: %v)", err, closeErr)
+		}
+		return nil, fmt.Errorf("failed to initialize oauth credentials: %w", err)
+	}
+	app.oauthCreds = oauthCredResult
+	if err := oauthproxy.DefaultManager().UseStore(newOAuthCredentialStoreAdapter(oauthCredResult.Store)); err != nil {
+		closeErr := errors.Join(oauthCredResult.Close(), authKeyResult.Close(), workflowResult.Close(), app.guardrails.Close(), app.pricingOverrides.Close(), app.modelOverrides.Close(), app.aliases.Close(), app.batch.Close(), app.budgets.Close(), app.usage.Close(), app.audit.Close(), app.providers.Close())
+		if closeErr != nil {
+			return nil, fmt.Errorf("failed to configure oauth credential store: %w (also: close error: %v)", err, closeErr)
+		}
+		return nil, fmt.Errorf("failed to configure oauth credential store: %w", err)
+	}
+
 	// Log configuration status after auth has been initialized so the startup
 	// message reflects both bootstrap and managed auth modes.
 	app.logStartupInfo()
@@ -474,6 +513,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 			workflowsCloseErr        error
 			guardrailsCloseErr       error
 			authKeysCloseErr         error
+			oauthCredsCloseErr       error
 			aliasCloseErr            error
 			modelOverridesCloseErr   error
 			pricingOverridesCloseErr error
@@ -488,6 +528,9 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		if app.authKeys != nil {
 			authKeysCloseErr = app.authKeys.Close()
 		}
+		if app.oauthCreds != nil {
+			oauthCredsCloseErr = app.oauthCreds.Close()
+		}
 		if app.aliases != nil {
 			aliasCloseErr = app.aliases.Close()
 		}
@@ -500,7 +543,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		if app.batch != nil {
 			batchCloseErr = app.batch.Close()
 		}
-		closeErr := errors.Join(workflowsCloseErr, guardrailsCloseErr, authKeysCloseErr, aliasCloseErr, modelOverridesCloseErr, pricingOverridesCloseErr, batchCloseErr, app.budgets.Close(), app.usage.Close(), app.audit.Close(), app.providers.Close())
+		closeErr := errors.Join(workflowsCloseErr, guardrailsCloseErr, authKeysCloseErr, oauthCredsCloseErr, aliasCloseErr, modelOverridesCloseErr, pricingOverridesCloseErr, batchCloseErr, app.budgets.Close(), app.usage.Close(), app.audit.Close(), app.providers.Close())
 		if closeErr != nil {
 			return nil, fmt.Errorf("failed to initialize response cache: %w (also: close error: %v)", err, closeErr)
 		}
@@ -519,14 +562,14 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		ResponseCache:          rcm,
 	})
 	if err := guardrailResult.Service.SetExecutor(ctx, internalGuardrailExecutor); err != nil {
-		closeErr := errors.Join(rcm.Close(), app.workflows.Close(), app.guardrails.Close(), app.authKeys.Close(), app.pricingOverrides.Close(), app.modelOverrides.Close(), app.aliases.Close(), app.batch.Close(), app.budgets.Close(), app.usage.Close(), app.audit.Close(), app.providers.Close())
+		closeErr := errors.Join(rcm.Close(), app.workflows.Close(), app.guardrails.Close(), app.authKeys.Close(), app.oauthCreds.Close(), app.pricingOverrides.Close(), app.modelOverrides.Close(), app.aliases.Close(), app.batch.Close(), app.budgets.Close(), app.usage.Close(), app.audit.Close(), app.providers.Close())
 		if closeErr != nil {
 			return nil, fmt.Errorf("failed to wire internal guardrail executor: %w (also: close error: %v)", err, closeErr)
 		}
 		return nil, fmt.Errorf("failed to wire internal guardrail executor: %w", err)
 	}
 	if err := workflowResult.Service.Refresh(ctx); err != nil {
-		closeErr := errors.Join(rcm.Close(), app.workflows.Close(), app.guardrails.Close(), app.authKeys.Close(), app.pricingOverrides.Close(), app.modelOverrides.Close(), app.aliases.Close(), app.batch.Close(), app.budgets.Close(), app.usage.Close(), app.audit.Close(), app.providers.Close())
+		closeErr := errors.Join(rcm.Close(), app.workflows.Close(), app.guardrails.Close(), app.authKeys.Close(), app.oauthCreds.Close(), app.pricingOverrides.Close(), app.modelOverrides.Close(), app.aliases.Close(), app.batch.Close(), app.budgets.Close(), app.usage.Close(), app.audit.Close(), app.providers.Close())
 		if closeErr != nil {
 			return nil, fmt.Errorf("failed to refresh workflows after wiring internal guardrail executor: %w (also: close error: %v)", err, closeErr)
 		}
@@ -731,7 +774,15 @@ func (a *App) Shutdown(ctx context.Context) error {
 		}
 	}
 
-	// 9. Close batch store (flushes pending entries)
+	// 9. Close persisted OAuth credentials subsystem.
+	if a.oauthCreds != nil {
+		if err := a.oauthCreds.Close(); err != nil {
+			slog.Error("oauth credentials close error", "error", err)
+			errs = append(errs, fmt.Errorf("oauth credentials close: %w", err))
+		}
+	}
+
+	// 10. Close batch store (flushes pending entries)
 	if a.batch != nil {
 		if err := a.batch.Close(); err != nil {
 			slog.Error("batch store close error", "error", err)
@@ -739,7 +790,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 		}
 	}
 
-	// 10. Close budget subsystem.
+	// 11. Close budget subsystem.
 	if a.budgets != nil {
 		if err := a.budgets.Close(); err != nil {
 			slog.Error("budgets close error", "error", err)
@@ -1150,4 +1201,34 @@ func firstSharedStorage(candidates ...storage.Storage) storage.Storage {
 		}
 	}
 	return nil
+}
+
+type oauthCredentialStoreAdapter struct{ store oauthcreds.Store }
+
+func newOAuthCredentialStoreAdapter(store oauthcreds.Store) *oauthCredentialStoreAdapter {
+	if store == nil {
+		return nil
+	}
+	return &oauthCredentialStoreAdapter{store: store}
+}
+
+func (a *oauthCredentialStoreAdapter) Get(ctx context.Context, providerID string) (*goaioauth.Credentials, error) {
+	if a == nil || a.store == nil {
+		return nil, os.ErrNotExist
+	}
+	rec, err := a.store.Get(ctx, providerID)
+	if err != nil {
+		if errors.Is(err, oauthcreds.ErrNotFound) {
+			return nil, os.ErrNotExist
+		}
+		return nil, err
+	}
+	return &goaioauth.Credentials{Refresh: rec.Refresh, Access: rec.Access, Expires: rec.Expires, Extra: rec.Extra}, nil
+}
+
+func (a *oauthCredentialStoreAdapter) Put(ctx context.Context, providerID string, creds *goaioauth.Credentials) error {
+	if a == nil || a.store == nil || creds == nil {
+		return nil
+	}
+	return a.store.Upsert(ctx, oauthcreds.Record{ProviderID: providerID, Refresh: creds.Refresh, Access: creds.Access, Expires: creds.Expires, Extra: creds.Extra})
 }

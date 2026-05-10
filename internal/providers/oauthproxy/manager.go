@@ -1,6 +1,7 @@
 package oauthproxy
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -30,16 +31,23 @@ type ProviderStatus struct {
 	AccessTokenExpires int64  `json:"accessTokenExpires"`
 }
 
+type CredentialStore interface {
+	Get(ctx context.Context, providerID string) (*goaioauth.Credentials, error)
+	Put(ctx context.Context, providerID string, creds *goaioauth.Credentials) error
+}
+
 type tokenStoreFile struct {
 	Providers map[string]*providerState `json:"providers"`
 }
 
-// Manager handles OAuth access token reuse and refresh with file-backed persistence
-// so a single proxy instance can serve multiple machines without per-machine logins.
+// Manager handles OAuth access token reuse and refresh.
+// It prefers a first-class persistent store when configured and falls back to a
+// local JSON file for legacy/dev compatibility.
 type Manager struct {
 	mu        sync.Mutex
 	storePath string
 	states    map[string]*providerState
+	store     CredentialStore
 }
 
 var (
@@ -62,6 +70,27 @@ func NewManager() *Manager {
 	return m
 }
 
+func (m *Manager) UseStore(store CredentialStore) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.store = store
+	if m.store == nil {
+		return nil
+	}
+	if err := m.loadLocked(); err != nil {
+		return err
+	}
+	for providerID, st := range m.states {
+		if st == nil || st.Creds == nil {
+			continue
+		}
+		if err := m.store.Put(context.Background(), providerID, cloneCredentials(st.Creds)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (m *Manager) SetInitial(providerID, refresh, access string, expires int64, extra map[string]interface{}) {
 	_ = m.UpsertCredentials(providerID, refresh, access, expires, extra)
 }
@@ -73,13 +102,12 @@ func (m *Manager) UpsertCredentials(providerID, refresh, access string, expires 
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if err := m.loadLocked(); err != nil {
+	st, err := m.loadStateLocked(providerID)
+	if err != nil {
 		return err
 	}
-	st := m.states[providerID]
 	if st == nil {
 		st = &providerState{ProviderID: providerID, Creds: &goaioauth.Credentials{}}
-		m.states[providerID] = st
 	}
 	if st.Creds == nil {
 		st.Creds = &goaioauth.Credentials{}
@@ -96,7 +124,8 @@ func (m *Manager) UpsertCredentials(providerID, refresh, access string, expires 
 	if extra != nil {
 		st.Creds.Extra = extra
 	}
-	return m.saveLocked()
+	m.states[providerID] = st
+	return m.persistStateLocked(providerID, st.Creds)
 }
 
 func (m *Manager) Status(providerID string) (ProviderStatus, error) {
@@ -107,10 +136,10 @@ func (m *Manager) Status(providerID string) (ProviderStatus, error) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if err := m.loadLocked(); err != nil {
+	st, err := m.loadStateLocked(providerID)
+	if err != nil {
 		return status, err
 	}
-	st := m.states[providerID]
 	if st == nil || st.Creds == nil {
 		return status, nil
 	}
@@ -125,11 +154,10 @@ func (m *Manager) GetAccessToken(providerID string) (string, *goaioauth.Credenti
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if err := m.loadLocked(); err != nil {
+	st, err := m.loadStateLocked(providerID)
+	if err != nil {
 		return "", nil, err
 	}
-
-	st := m.states[providerID]
 	if st == nil || st.Creds == nil {
 		return "", nil, fmt.Errorf("oauth creds for %s not configured", providerID)
 	}
@@ -137,7 +165,6 @@ func (m *Manager) GetAccessToken(providerID string) (string, *goaioauth.Credenti
 		return "", nil, fmt.Errorf("oauth refresh token for %s is empty", providerID)
 	}
 
-	// Refresh when missing or near expiry (60s skew)
 	now := time.Now().UnixMilli()
 	if strings.TrimSpace(st.Creds.Access) == "" || st.Creds.Expires <= now+60_000 {
 		provider := goaioauth.GetProvider(providerID)
@@ -150,7 +177,7 @@ func (m *Manager) GetAccessToken(providerID string) (string, *goaioauth.Credenti
 		}
 		st.Creds = fresh
 		m.states[providerID] = st
-		if err := m.saveLocked(); err != nil {
+		if err := m.persistStateLocked(providerID, st.Creds); err != nil {
 			return "", nil, err
 		}
 	}
@@ -159,7 +186,50 @@ func (m *Manager) GetAccessToken(providerID string) (string, *goaioauth.Credenti
 	if provider == nil {
 		return "", nil, fmt.Errorf("oauth provider %s not registered", providerID)
 	}
-	return provider.GetAPIKey(st.Creds), st.Creds, nil
+	return provider.GetAPIKey(st.Creds), cloneCredentials(st.Creds), nil
+}
+
+func (m *Manager) loadStateLocked(providerID string) (*providerState, error) {
+	providerID = strings.TrimSpace(providerID)
+	if providerID == "" {
+		return nil, nil
+	}
+	if m.store != nil {
+		creds, err := m.store.Get(context.Background(), providerID)
+		if err == nil {
+			st := &providerState{ProviderID: providerID, Creds: cloneCredentials(creds)}
+			m.states[providerID] = st
+			return st, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) && !strings.Contains(strings.ToLower(err.Error()), "not found") {
+			return nil, err
+		}
+	}
+	if err := m.loadLocked(); err != nil {
+		return nil, err
+	}
+	return m.states[providerID], nil
+}
+
+func (m *Manager) persistStateLocked(providerID string, creds *goaioauth.Credentials) error {
+	if m.store != nil {
+		return m.store.Put(context.Background(), providerID, cloneCredentials(creds))
+	}
+	return m.saveLocked()
+}
+
+func cloneCredentials(creds *goaioauth.Credentials) *goaioauth.Credentials {
+	if creds == nil {
+		return nil
+	}
+	cloned := &goaioauth.Credentials{Refresh: creds.Refresh, Access: creds.Access, Expires: creds.Expires}
+	if creds.Extra != nil {
+		cloned.Extra = make(map[string]interface{}, len(creds.Extra))
+		for k, v := range creds.Extra {
+			cloned.Extra[k] = v
+		}
+	}
+	return cloned
 }
 
 func (m *Manager) loadLocked() error {
