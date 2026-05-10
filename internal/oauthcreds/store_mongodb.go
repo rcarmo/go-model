@@ -36,6 +36,26 @@ func NewMongoDBStore(database *mongo.Database) (*MongoDBStore, error) {
 	return &MongoDBStore{collection: coll}, nil
 }
 
+func (s *MongoDBStore) List(ctx context.Context) ([]Record, error) {
+	cursor, err := s.collection.Find(ctx, bson.M{}, options.Find().SetSort(bson.D{{Key: "_id", Value: 1}}))
+	if err != nil {
+		return nil, fmt.Errorf("list oauth credentials: %w", err)
+	}
+	defer cursor.Close(ctx)
+	result := make([]Record, 0)
+	for cursor.Next(ctx) {
+		var doc mongoRecord
+		if err := cursor.Decode(&doc); err != nil {
+			return nil, fmt.Errorf("decode oauth credentials: %w", err)
+		}
+		result = append(result, Record{ProviderID: doc.ProviderID, Refresh: doc.Refresh, Access: doc.Access, Expires: doc.Expires, Extra: doc.Extra, CreatedAt: doc.CreatedAt.UTC(), UpdatedAt: doc.UpdatedAt.UTC()})
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, fmt.Errorf("iterate oauth credentials: %w", err)
+	}
+	return result, nil
+}
+
 func (s *MongoDBStore) Get(ctx context.Context, providerID string) (*Record, error) {
 	providerID = normalizeProviderID(providerID)
 	var doc mongoRecord

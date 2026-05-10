@@ -32,6 +32,36 @@ func NewSQLiteStore(db *sql.DB) (*SQLiteStore, error) {
 	return &SQLiteStore{db: db}, nil
 }
 
+func (s *SQLiteStore) List(ctx context.Context) ([]Record, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT provider_id, refresh_token, access_token, expires_at_ms, extra_json, created_at, updated_at
+		FROM oauth_credentials ORDER BY provider_id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list oauth credentials: %w", err)
+	}
+	defer rows.Close()
+	result := make([]Record, 0)
+	for rows.Next() {
+		var rec Record
+		var extraJSON string
+		var createdAt, updatedAt int64
+		if err := rows.Scan(&rec.ProviderID, &rec.Refresh, &rec.Access, &rec.Expires, &extraJSON, &createdAt, &updatedAt); err != nil {
+			return nil, fmt.Errorf("iterate oauth credentials: %w", err)
+		}
+		if err := json.Unmarshal([]byte(extraJSON), &rec.Extra); err != nil {
+			rec.Extra = map[string]any{}
+		}
+		rec.CreatedAt = time.Unix(createdAt, 0).UTC()
+		rec.UpdatedAt = time.Unix(updatedAt, 0).UTC()
+		result = append(result, rec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate oauth credentials: %w", err)
+	}
+	return result, nil
+}
+
 func (s *SQLiteStore) Get(ctx context.Context, providerID string) (*Record, error) {
 	providerID = normalizeProviderID(providerID)
 	var rec Record

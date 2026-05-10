@@ -21,6 +21,7 @@
             oauthNotice: '',
             oauthError: '',
             oauthStatuses: [],
+            oauthImportExportJSON: '',
 
             emptyProviderStatus() {
                 return {
@@ -246,6 +247,56 @@
                     this.fetchProviderStatus(),
                     this.refreshOAuthStatuses()
                 ]);
+            },
+
+            async exportOAuthCredentials() {
+                this.oauthError = '';
+                try {
+                    const request = typeof this.requestOptions === 'function' ? this.requestOptions() : { headers: this.headers() };
+                    const res = await fetch('/admin/api/v1/providers/oauth-credentials/export', request);
+                    const handled = this.handleFetchResponse(res, 'oauth export', request);
+                    if (typeof this.isStaleAuthFetchResult === 'function' && this.isStaleAuthFetchResult(handled)) return;
+                    if (!handled) {
+                        this.oauthError = 'Failed to export OAuth credentials.';
+                        return;
+                    }
+                    const data = await res.json();
+                    this.oauthImportExportJSON = JSON.stringify(data, null, 2);
+                    this.oauthNotice = 'OAuth credentials exported to JSON.';
+                } catch (e) {
+                    console.error('Failed to export oauth credentials:', e);
+                    this.oauthError = 'Failed to export OAuth credentials.';
+                }
+            },
+
+            async importOAuthCredentials() {
+                this.oauthError = '';
+                let payload;
+                try {
+                    payload = JSON.parse(this.oauthImportExportJSON || '{}');
+                } catch (e) {
+                    this.oauthError = 'Invalid JSON.';
+                    return;
+                }
+                try {
+                    const request = typeof this.requestOptions === 'function' ? this.requestOptions({ method: 'POST' }) : { method: 'POST', headers: this.headers() };
+                    request.body = JSON.stringify(payload);
+                    const res = await fetch('/admin/api/v1/providers/oauth-credentials/import', request);
+                    const handled = this.handleFetchResponse(res, 'oauth import', request);
+                    if (typeof this.isStaleAuthFetchResult === 'function' && this.isStaleAuthFetchResult(handled)) return;
+                    if (!handled) {
+                        this.oauthError = 'Failed to import OAuth credentials.';
+                        return;
+                    }
+                    await this.refreshOAuthStatuses();
+                    if (typeof this.refreshRuntime === 'function') {
+                        await this.refreshRuntime();
+                    }
+                    this.oauthNotice = 'OAuth credentials imported and runtime refreshed.';
+                } catch (e) {
+                    console.error('Failed to import oauth credentials:', e);
+                    this.oauthError = 'Failed to import OAuth credentials.';
+                }
             },
 
             async refreshOAuthStatuses() {

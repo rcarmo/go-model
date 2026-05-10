@@ -20,6 +20,7 @@ import (
 	"gomodel/internal/core"
 	"gomodel/internal/guardrails"
 	"gomodel/internal/modeloverrides"
+	"gomodel/internal/oauthcreds"
 	"gomodel/internal/pricingoverrides"
 	"gomodel/internal/providers"
 	"gomodel/internal/usage"
@@ -34,6 +35,7 @@ type Handler struct {
 	registry            *providers.ModelRegistry
 	pricingResolver     usage.PricingResolver
 	authKeys            *authkeys.Service
+	oauthCreds          oauthcreds.Store
 	aliases             *aliases.Service
 	modelOverrides      *modeloverrides.Service
 	pricingOverrides    *pricingoverrides.Service
@@ -180,6 +182,13 @@ func WithAliases(service *aliases.Service) Option {
 func WithAuthKeys(service *authkeys.Service) Option {
 	return func(h *Handler) {
 		h.authKeys = service
+	}
+}
+
+// WithOAuthCredentials enables provider OAuth credential import/export endpoints.
+func WithOAuthCredentials(store oauthcreds.Store) Option {
+	return func(h *Handler) {
+		h.oauthCreds = store
 	}
 }
 

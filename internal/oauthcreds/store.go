@@ -20,6 +20,7 @@ type Record struct {
 }
 
 type Store interface {
+	List(ctx context.Context) ([]Record, error)
 	Get(ctx context.Context, providerID string) (*Record, error)
 	Upsert(ctx context.Context, record Record) error
 	Close() error

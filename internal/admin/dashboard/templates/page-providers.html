@@ -41,6 +41,19 @@
     </div>
 
     <div class="settings-refresh-section">
+      <h3>Import / Export</h3>
+      <p class="muted">Export persisted provider OAuth credentials as JSON, then import them into another instance.</p>
+      <div class="settings-refresh-actions">
+        <button type="button" class="pagination-btn" @click="exportOAuthCredentials()">Export JSON</button>
+        <button type="button" class="pagination-btn pagination-btn-primary" @click="importOAuthCredentials()">Import JSON</button>
+      </div>
+      <div class="form-field">
+        <label class="form-field-label" for="oauth-import-export-json">OAuth credential JSON</label>
+        <textarea id="oauth-import-export-json" class="form-input" style="min-height: 14rem; font-family: ui-monospace, monospace;" x-model="oauthImportExportJSON"></textarea>
+      </div>
+    </div>
+
+    <div class="settings-refresh-section">
       <h3>Stored token status</h3>
       <table class="models-table">
         <thead><tr><th>Provider</th><th>Configured</th><th>Refresh token</th><th>Access token</th><th>Expires</th></tr></thead>
