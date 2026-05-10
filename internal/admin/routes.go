@@ -54,6 +54,8 @@ func (h *Handler) RegisterRoutes(g RouteRegistrar) {
 	g.DELETE("/model-pricing-overrides", h.DeleteModelPricingOverride)
 
 	g.GET("/auth-keys", h.ListAuthKeys)
+	g.GET("/auth-keys/export", h.ExportAuthKeys)
+	g.POST("/auth-keys/import", h.ImportAuthKeys)
 	g.POST("/auth-keys", h.CreateAuthKey)
 	g.POST("/auth-keys/:id/deactivate", h.DeactivateAuthKey)
 

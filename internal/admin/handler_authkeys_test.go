@@ -39,6 +39,11 @@ func (s *authKeyTestStore) Create(_ context.Context, key authkeys.AuthKey) error
 	return nil
 }
 
+func (s *authKeyTestStore) Upsert(_ context.Context, key authkeys.AuthKey) error {
+	s.keys[key.ID] = key
+	return nil
+}
+
 func (s *authKeyTestStore) Deactivate(_ context.Context, id string, now time.Time) error {
 	key, ok := s.keys[id]
 	if !ok {

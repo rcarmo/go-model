@@ -151,6 +151,51 @@ func (s *Service) ListViews() []View {
 	return result
 }
 
+// ExportRecords returns the raw persisted records, including secret hashes, for migration/backup.
+func (s *Service) ExportRecords() []AuthKey {
+	if s == nil {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make([]AuthKey, 0, len(s.snapshot.order))
+	for _, id := range s.snapshot.order {
+		result = append(result, s.snapshot.byID[id])
+	}
+	return result
+}
+
+// ImportRecords upserts raw auth-key records and refreshes the in-memory snapshot.
+func (s *Service) ImportRecords(ctx context.Context, records []AuthKey) error {
+	if s == nil {
+		return fmt.Errorf("auth key service is required")
+	}
+	for _, key := range records {
+		key.ID = normalizeID(key.ID)
+		key.Name = strings.TrimSpace(key.Name)
+		key.Description = strings.TrimSpace(key.Description)
+		key.UserPath = strings.TrimSpace(key.UserPath)
+		key.RedactedValue = strings.TrimSpace(key.RedactedValue)
+		key.SecretHash = strings.TrimSpace(key.SecretHash)
+		if key.ID == "" || key.Name == "" || key.RedactedValue == "" || key.SecretHash == "" {
+			return newValidationError("id, name, redacted_value, and secret_hash are required", nil)
+		}
+		if key.CreatedAt.IsZero() {
+			key.CreatedAt = time.Now().UTC()
+		}
+		if key.UpdatedAt.IsZero() {
+			key.UpdatedAt = key.CreatedAt
+		}
+		if err := s.store.Upsert(ctx, key); err != nil {
+			return fmt.Errorf("upsert auth key: %w", err)
+		}
+	}
+	if err := s.Refresh(ctx); err != nil {
+		return fmt.Errorf("refresh auth keys: %w", err)
+	}
+	return nil
+}
+
 // Create issues a new managed auth key, persists it, updates the in-memory
 // snapshot immediately, and then best-effort reconciles from storage.
 func (s *Service) Create(ctx context.Context, input CreateInput) (*IssuedKey, error) {

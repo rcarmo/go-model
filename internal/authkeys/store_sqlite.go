@@ -87,6 +87,28 @@ func (s *SQLiteStore) Create(ctx context.Context, key AuthKey) error {
 	return nil
 }
 
+func (s *SQLiteStore) Upsert(ctx context.Context, key AuthKey) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO auth_keys (id, name, description, user_path, redacted_value, secret_hash, enabled, expires_at, deactivated_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			name = excluded.name,
+			description = excluded.description,
+			user_path = excluded.user_path,
+			redacted_value = excluded.redacted_value,
+			secret_hash = excluded.secret_hash,
+			enabled = excluded.enabled,
+			expires_at = excluded.expires_at,
+			deactivated_at = excluded.deactivated_at,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at
+	`, key.ID, key.Name, key.Description, nullableString(key.UserPath), key.RedactedValue, key.SecretHash, boolToSQLite(key.Enabled), unixOrNil(key.ExpiresAt), unixOrNil(key.DeactivatedAt), key.CreatedAt.Unix(), key.UpdatedAt.Unix())
+	if err != nil {
+		return fmt.Errorf("upsert auth key: %w", err)
+	}
+	return nil
+}
+
 func (s *SQLiteStore) Deactivate(ctx context.Context, id string, now time.Time) error {
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE auth_keys

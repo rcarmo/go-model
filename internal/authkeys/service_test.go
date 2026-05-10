@@ -11,6 +11,7 @@ type testStore struct {
 	keys          map[string]AuthKey
 	listErr       error
 	createErr     error
+	upsertErr     error
 	deactivateErr error
 }
 
@@ -41,6 +42,14 @@ func (s *testStore) Create(_ context.Context, key AuthKey) error {
 	return nil
 }
 
+func (s *testStore) Upsert(_ context.Context, key AuthKey) error {
+	if s.upsertErr != nil {
+		return s.upsertErr
+	}
+	s.keys[key.ID] = key
+	return nil
+}
+
 func (s *testStore) Deactivate(_ context.Context, id string, now time.Time) error {
 	if s.deactivateErr != nil {
 		return s.deactivateErr
@@ -60,6 +69,32 @@ func (s *testStore) Deactivate(_ context.Context, id string, now time.Time) erro
 }
 
 func (s *testStore) Close() error { return nil }
+
+func TestServiceImportRecords(t *testing.T) {
+	store := newTestStore()
+	service, err := NewService(store)
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	createdAt := time.Now().UTC().Truncate(time.Second)
+	if err := service.ImportRecords(context.Background(), []AuthKey{{
+		ID:            "key-1",
+		Name:          "primary",
+		RedactedValue: "sk_gom_...abcd",
+		SecretHash:    "hash-1",
+		Enabled:       true,
+		CreatedAt:     createdAt,
+		UpdatedAt:     createdAt,
+	}}); err != nil {
+		t.Fatalf("ImportRecords() error = %v", err)
+	}
+	if service.Total() != 1 {
+		t.Fatalf("Total() = %d, want 1", service.Total())
+	}
+	if got := service.ExportRecords(); len(got) != 1 || got[0].SecretHash != "hash-1" {
+		t.Fatalf("ExportRecords() = %#v", got)
+	}
+}
 
 func TestServiceCreateAuthenticateAndDeactivate(t *testing.T) {
 	service, err := NewService(newTestStore())

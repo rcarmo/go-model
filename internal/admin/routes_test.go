@@ -69,6 +69,8 @@ func TestRegisterRoutes_RegistersExpectedPaths(t *testing.T) {
 		"DELETE /admin/api/v1/model-pricing-overrides",
 
 		"GET /admin/api/v1/auth-keys",
+		"GET /admin/api/v1/auth-keys/export",
+		"POST /admin/api/v1/auth-keys/import",
 		"POST /admin/api/v1/auth-keys",
 		"POST /admin/api/v1/auth-keys/:id/deactivate",
 

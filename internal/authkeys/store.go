@@ -54,6 +54,7 @@ func IsValidationError(err error) bool {
 type Store interface {
 	List(ctx context.Context) ([]AuthKey, error)
 	Create(ctx context.Context, key AuthKey) error
+	Upsert(ctx context.Context, key AuthKey) error
 	Deactivate(ctx context.Context, id string, now time.Time) error
 	Close() error
 }

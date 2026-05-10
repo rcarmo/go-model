@@ -94,6 +94,26 @@ func (s *MongoDBStore) Create(ctx context.Context, key AuthKey) error {
 	return nil
 }
 
+func (s *MongoDBStore) Upsert(ctx context.Context, key AuthKey) error {
+	_, err := s.collection.UpdateOne(ctx, mongoAuthKeyIDFilter{ID: key.ID}, bson.M{"$set": mongoAuthKeyDocument{
+		ID:            key.ID,
+		Name:          key.Name,
+		Description:   key.Description,
+		UserPath:      key.UserPath,
+		RedactedValue: key.RedactedValue,
+		SecretHash:    key.SecretHash,
+		Enabled:       key.Enabled,
+		ExpiresAt:     key.ExpiresAt,
+		DeactivatedAt: key.DeactivatedAt,
+		CreatedAt:     key.CreatedAt.UTC(),
+		UpdatedAt:     key.UpdatedAt.UTC(),
+	}}, options.UpdateOne().SetUpsert(true))
+	if err != nil {
+		return fmt.Errorf("upsert auth key: %w", err)
+	}
+	return nil
+}
+
 func (s *MongoDBStore) Deactivate(ctx context.Context, id string, now time.Time) error {
 	now = now.UTC()
 	result, err := s.collection.UpdateOne(ctx, mongoAuthKeyIDFilter{ID: normalizeID(id)}, mongo.Pipeline{

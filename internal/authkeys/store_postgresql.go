@@ -91,6 +91,28 @@ func (s *PostgreSQLStore) Create(ctx context.Context, key AuthKey) error {
 	return nil
 }
 
+func (s *PostgreSQLStore) Upsert(ctx context.Context, key AuthKey) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO auth_keys (id, name, description, user_path, redacted_value, secret_hash, enabled, expires_at, deactivated_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		ON CONFLICT (id) DO UPDATE SET
+			name = excluded.name,
+			description = excluded.description,
+			user_path = excluded.user_path,
+			redacted_value = excluded.redacted_value,
+			secret_hash = excluded.secret_hash,
+			enabled = excluded.enabled,
+			expires_at = excluded.expires_at,
+			deactivated_at = excluded.deactivated_at,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at
+	`, key.ID, key.Name, key.Description, pgNullableString(key.UserPath), key.RedactedValue, key.SecretHash, key.Enabled, pgUnixOrNil(key.ExpiresAt), pgUnixOrNil(key.DeactivatedAt), key.CreatedAt.Unix(), key.UpdatedAt.Unix())
+	if err != nil {
+		return fmt.Errorf("upsert auth key: %w", err)
+	}
+	return nil
+}
+
 func (s *PostgreSQLStore) Deactivate(ctx context.Context, id string, now time.Time) error {
 	cmd, err := s.pool.Exec(ctx, `
 		UPDATE auth_keys
