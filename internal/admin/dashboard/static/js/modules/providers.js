@@ -334,9 +334,17 @@
                     this.oauthAuthURL = session.authUrl || '';
                     this.oauthInstructions = session.instructions || '';
                     if (session.state === 'complete') {
-                        this.oauthNotice = 'OAuth login complete and token stored.';
+                        this.oauthNotice = 'OAuth login complete and token stored. Refreshing runtime and models...';
                         this.oauthError = '';
                         await this.refreshOAuthStatuses();
+                        if (typeof this.refreshRuntime === 'function') {
+                            try {
+                                await this.refreshRuntime();
+                                this.oauthNotice = 'OAuth login complete, token stored, and runtime refreshed.';
+                            } catch (_) {
+                                this.oauthNotice = 'OAuth login complete and token stored. Runtime refresh failed; try Settings → Runtime Refresh.';
+                            }
+                        }
                         return;
                     }
                     if (session.state === 'error') {
