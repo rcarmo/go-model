@@ -30,6 +30,8 @@ func (h *Handler) RegisterRoutes(g RouteRegistrar) {
 	g.GET("/audit/conversation", h.AuditConversation)
 
 	g.GET("/providers/status", h.ProviderStatus)
+	g.GET("/transfer/export", h.ExportTransferBundle)
+	g.POST("/transfer/import", h.ImportTransferBundle)
 	g.GET("/providers/oauth-credentials/export", h.ExportOAuthCredentials)
 	g.POST("/providers/oauth-credentials/import", h.ImportOAuthCredentials)
 	g.POST("/runtime/refresh", h.RefreshRuntime)

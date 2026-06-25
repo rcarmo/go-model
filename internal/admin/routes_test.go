@@ -45,6 +45,8 @@ func TestRegisterRoutes_RegistersExpectedPaths(t *testing.T) {
 		"GET /admin/api/v1/audit/conversation",
 
 		"GET /admin/api/v1/providers/status",
+		"GET /admin/api/v1/transfer/export",
+		"POST /admin/api/v1/transfer/import",
 		"GET /admin/api/v1/providers/oauth-credentials/export",
 		"POST /admin/api/v1/providers/oauth-credentials/import",
 		"POST /admin/api/v1/runtime/refresh",
