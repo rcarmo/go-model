@@ -10,12 +10,12 @@ cache:
   model:
     refresh_interval: 86400
     local:
-      cache_dir: "/tmp/gomodel-bench-cache"
+      cache_dir: "/workspace/tmp/go-model/runs/gateway-comparison/default/gomodel-bench-cache"
 
 storage:
   type: "sqlite"
   sqlite:
-    path: "/tmp/gomodel-bench.db"
+    path: "/workspace/tmp/go-model/runs/gateway-comparison/default/gomodel-bench.db"
 
 logging:
   enabled: false

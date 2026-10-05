@@ -129,7 +129,7 @@ use the built-in login UX at `GET /auth/login` to save refresh tokens.
 Status is available at `GET /auth/status/openai-codex` and
 `GET /auth/status/github-copilot`.
 The proxy persists refreshed access tokens in `GOMODEL_OAUTH_TOKEN_STORE`
-(default: `/workspace/tmp/gomodel-oauth-tokens.json`) so one proxy session can
+(default: the resolved project temp root plus `runs/oauthproxy/default/gomodel-oauth-tokens.json`, normally `/workspace/tmp/go-model/...`) so one proxy session can
 serve multiple machines without repeated logins.
 To register multiple instances of the same provider type without `config.yaml`,
 use suffixed env vars such as `OPENAI_EAST_API_KEY` and

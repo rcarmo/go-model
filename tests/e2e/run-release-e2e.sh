@@ -203,8 +203,20 @@ done
 [[ "$TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || die "--timeout must be an integer number of seconds"
 [[ -f "$SCENARIO_DOC" ]] || die "missing scenario file: $SCENARIO_DOC"
 
+# shellcheck source=../../scripts/project-tmp.sh
+source "$REPO_ROOT/scripts/project-tmp.sh"
+PROJECT_TMP_ROOT="$(gomodel_project_tmp_root)"
+project_tmp_init "$PROJECT_TMP_ROOT"
+PROJECT_CACHE_ROOT="$PROJECT_TMP_ROOT/cache"
+PROJECT_RUNS_ROOT="$PROJECT_TMP_ROOT/runs"
+export TMPDIR="$PROJECT_RUNS_ROOT/release-e2e/tmp"
+export GOCACHE="${GOCACHE:-$PROJECT_CACHE_ROOT/go/build}"
+export GOMODCACHE="${GOMODCACHE:-$PROJECT_CACHE_ROOT/go/mod}"
+export GOTOOLCHAIN="${GOTOOLCHAIN:-local}"
+mkdir -p "$TMPDIR" "$GOCACHE" "$GOMODCACHE"
+
 if (( OUTPUT_DIR_SET == 0 )); then
-  OUTPUT_DIR="/tmp/gomodel-release-e2e-$QA_SUFFIX"
+  OUTPUT_DIR="$PROJECT_RUNS_ROOT/release-e2e/$QA_SUFFIX"
 fi
 
 for tool in awk bash curl grep jq mktemp sed; do

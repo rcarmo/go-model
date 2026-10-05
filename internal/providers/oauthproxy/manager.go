@@ -15,7 +15,7 @@ import (
 	goaioauth "github.com/rcarmo/go-ai/oauth"
 )
 
-const defaultStorePath = "/workspace/tmp/gomodel-oauth-tokens.json"
+const canonicalProjectName = "go-model"
 
 type providerState struct {
 	ProviderID string                 `json:"providerId"`
@@ -63,11 +63,39 @@ func DefaultManager() *Manager {
 func NewManager() *Manager {
 	path := strings.TrimSpace(os.Getenv("GOMODEL_OAUTH_TOKEN_STORE"))
 	if path == "" {
-		path = defaultStorePath
+		path = defaultTokenStorePath()
 	}
 	m := &Manager{storePath: path, states: make(map[string]*providerState)}
 	_ = m.loadLocked()
 	return m
+}
+
+func defaultTokenStorePath() string {
+	root := strings.TrimSpace(os.Getenv("PROJECT_TMP_ROOT"))
+	if root != "" && filepath.IsAbs(root) && filepath.Base(root) == canonicalProjectName {
+		return filepath.Join(root, "runs", "oauthproxy", "default", "gomodel-oauth-tokens.json")
+	}
+	for _, base := range []string{"/workspace/tmp", strings.TrimSpace(os.Getenv("RUNNER_TEMP")), strings.TrimSpace(os.Getenv("TMPDIR")), os.TempDir()} {
+		if strings.TrimSpace(base) == "" {
+			continue
+		}
+		candidate := filepath.Join(base, canonicalProjectName)
+		parent := candidate
+		for {
+			if _, err := os.Stat(parent); err == nil {
+				break
+			}
+			next := filepath.Dir(parent)
+			if next == parent {
+				break
+			}
+			parent = next
+		}
+		if info, err := os.Stat(parent); err == nil && info.IsDir() {
+			return filepath.Join(candidate, "runs", "oauthproxy", "default", "gomodel-oauth-tokens.json")
+		}
+	}
+	return filepath.Join(os.TempDir(), canonicalProjectName, "runs", "oauthproxy", "default", "gomodel-oauth-tokens.json")
 }
 
 func (m *Manager) UseStore(store CredentialStore) error {

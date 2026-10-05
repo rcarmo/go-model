@@ -26,7 +26,7 @@ tests/e2e/manage-release-e2e-stack.sh stop
 
 The runner treats this markdown file as the source of truth, replays the setup
 blocks automatically for each scenario, writes a raw log plus a TSV summary
-under `QA_RUN_DIR` (default: `/tmp/gomodel-release-e2e-$QA_SUFFIX`), and
+under `QA_RUN_DIR` (default: the resolved project temp root plus `runs/release-e2e/$QA_SUFFIX`), and
 supports partial reruns.
 
 Stateful note:
@@ -44,7 +44,8 @@ Stateful note:
 
 ```bash
 export QA_SUFFIX="${QA_SUFFIX:-$(date +%s)-$$}"
-export QA_RUN_DIR="${QA_RUN_DIR:-/tmp/gomodel-release-e2e-$QA_SUFFIX}"
+export PROJECT_TMP_ROOT="${PROJECT_TMP_ROOT:-/workspace/tmp/go-model}"
+export QA_RUN_DIR="${QA_RUN_DIR:-$PROJECT_TMP_ROOT/runs/release-e2e/$QA_SUFFIX}"
 export QA_OPENAI_ALIAS="${QA_OPENAI_ALIAS:-qa-gpt-latest-$QA_SUFFIX}"
 export QA_ANTHROPIC_ALIAS="${QA_ANTHROPIC_ALIAS:-qa-sonnet-thinking-$QA_SUFFIX}"
 export QA_BUDGET_SUFFIX="${QA_SUFFIX//[^[:alnum:]]/_}"
@@ -186,7 +187,8 @@ source .env
 set +a
 
 export QA_SUFFIX="${QA_SUFFIX:-$(date +%s)-$$}"
-export QA_RUN_DIR="${QA_RUN_DIR:-/tmp/gomodel-release-e2e-$QA_SUFFIX}"
+export PROJECT_TMP_ROOT="${PROJECT_TMP_ROOT:-/workspace/tmp/go-model}"
+export QA_RUN_DIR="${QA_RUN_DIR:-$PROJECT_TMP_ROOT/runs/release-e2e/$QA_SUFFIX}"
 
 mkdir -p "$QA_RUN_DIR"
 

@@ -4,8 +4,19 @@ set -euo pipefail
 # ── Configuration ──────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+# shellcheck source=../../../scripts/project-tmp.sh
+source "$PROJECT_ROOT/scripts/project-tmp.sh"
+PROJECT_TMP_ROOT="$(gomodel_project_tmp_root)"
+project_tmp_init "$PROJECT_TMP_ROOT"
+PROJECT_CACHE_ROOT="$PROJECT_TMP_ROOT/cache"
+PROJECT_RUNS_ROOT="$PROJECT_TMP_ROOT/runs"
+BENCH_RUN_ROOT="${BENCH_RUN_ROOT:-$PROJECT_RUNS_ROOT/gateway-comparison/default}"
 RESULTS_DIR="$SCRIPT_DIR/results"
 MOCK_PORT=9999
+export TMPDIR="$BENCH_RUN_ROOT/tmp"
+export GOCACHE="${GOCACHE:-$PROJECT_CACHE_ROOT/go/build}"
+export GOMODCACHE="${GOMODCACHE:-$PROJECT_CACHE_ROOT/go/mod}"
+export GOTOOLCHAIN="${GOTOOLCHAIN:-local}"
 GOMODEL_PORT=8081
 LITELLM_PORT=8082
 
@@ -13,7 +24,7 @@ N_REQUESTS=1000         # total requests per test
 CONCURRENCY=50          # concurrent connections
 
 rm -rf "$RESULTS_DIR"
-mkdir -p "$RESULTS_DIR"
+mkdir -p "$RESULTS_DIR" "$BENCH_RUN_ROOT" "$TMPDIR" "$GOCACHE" "$GOMODCACHE"
 
 # ── Helpers ────────────────────────────────────────────────────────
 log()  { printf "\n\033[1;34m>>> %s\033[0m\n" "$1"; }
@@ -40,8 +51,8 @@ cleanup() {
     [[ -n "$GW_PID" ]]  && kill "$GW_PID"  2>/dev/null || true
     [[ -n "$MON_PID" ]] && kill "$MON_PID" 2>/dev/null || true
     pkill -f "litellm.*${LITELLM_PORT}" 2>/dev/null || true
-    rm -f /tmp/gomodel-bench.db
-    rm -rf /tmp/gomodel-bench-cache
+    rm -f "$BENCH_RUN_ROOT/gomodel-bench.db"
+    rm -rf "$BENCH_RUN_ROOT/gomodel-bench-cache"
 }
 trap cleanup EXIT
 
@@ -230,8 +241,8 @@ GOMODEL_MASTER_KEY="" \
 LOGGING_ENABLED=false \
 USAGE_ENABLED=false \
 STORAGE_TYPE=sqlite \
-SQLITE_PATH="/tmp/gomodel-bench.db" \
-GOMODEL_CACHE_DIR="/tmp/gomodel-bench-cache" \
+SQLITE_PATH="$BENCH_RUN_ROOT/gomodel-bench.db" \
+GOMODEL_CACHE_DIR="$BENCH_RUN_ROOT/gomodel-bench-cache" \
 ADMIN_ENDPOINTS_ENABLED=false \
 ADMIN_UI_ENABLED=false \
 SWAGGER_ENABLED=false \

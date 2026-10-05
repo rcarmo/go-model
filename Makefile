@@ -10,29 +10,48 @@ DOCS_API_SERVERS ?= https://gomodel.example.com,http://localhost:8080
 LOG_LEVEL ?= debug
 SWAGGER_ENABLED ?= true
 
+PROJECT_TMP_INFO := $(shell ./scripts/project-tmp.sh)
+PROJECT_TMP_ROOT := $(patsubst PROJECT_TMP_ROOT=%,%,$(filter PROJECT_TMP_ROOT=%,$(PROJECT_TMP_INFO)))
+PROJECT_CACHE_ROOT := $(patsubst PROJECT_CACHE_ROOT=%,%,$(filter PROJECT_CACHE_ROOT=%,$(PROJECT_TMP_INFO)))
+PROJECT_BUILD_ROOT := $(patsubst PROJECT_BUILD_ROOT=%,%,$(filter PROJECT_BUILD_ROOT=%,$(PROJECT_TMP_INFO)))
+PROJECT_RUNS_ROOT := $(patsubst PROJECT_RUNS_ROOT=%,%,$(filter PROJECT_RUNS_ROOT=%,$(PROJECT_TMP_INFO)))
+GO_CACHE_ROOT ?= $(PROJECT_CACHE_ROOT)/go
+GOCACHE ?= $(GO_CACHE_ROOT)/build
+GOMODCACHE ?= $(GO_CACHE_ROOT)/mod
+TMPDIR := $(PROJECT_RUNS_ROOT)/make/tmp
+GOTOOLCHAIN ?= local
+export PROJECT_TMP_ROOT PROJECT_CACHE_ROOT PROJECT_BUILD_ROOT PROJECT_RUNS_ROOT GOCACHE GOMODCACHE TMPDIR GOTOOLCHAIN
+
+GO_ENV := PROJECT_TMP_ROOT=$(PROJECT_TMP_ROOT) PROJECT_CACHE_ROOT=$(PROJECT_CACHE_ROOT) PROJECT_BUILD_ROOT=$(PROJECT_BUILD_ROOT) PROJECT_RUNS_ROOT=$(PROJECT_RUNS_ROOT) GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) TMPDIR=$(TMPDIR) GOTOOLCHAIN=$(GOTOOLCHAIN)
+
 # Linker flags to inject version info
 LDFLAGS := -X "gomodel/internal/version.Version=$(VERSION)" \
            -X "gomodel/internal/version.Commit=$(COMMIT)" \
            -X "gomodel/internal/version.Date=$(DATE)"
 
-install-tools:
-	@command -v golangci-lint > /dev/null 2>&1 || (echo "Installing golangci-lint..." && go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.10)
-	@command -v pre-commit > /dev/null 2>&1 || (echo "Installing pre-commit..." && pip install pre-commit==4.5.1)
+ensure-tmp:
+	@test -n "$(PROJECT_TMP_ROOT)" || { echo "failed to resolve PROJECT_TMP_ROOT" >&2; exit 1; }
+	@./scripts/project-tmp.sh >/dev/null
+	@mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" "$(PROJECT_BUILD_ROOT)" "$(PROJECT_RUNS_ROOT)" "$(TMPDIR)"
+
+install-tools: ensure-tmp
+	@command -v golangci-lint > /dev/null 2>&1 || (echo "Installing golangci-lint..." && $(GO_ENV) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.10)
+	@command -v pre-commit > /dev/null 2>&1 || (echo "Installing pre-commit..." && TMPDIR="$(TMPDIR)" pip install pre-commit==4.5.1)
 	@echo "All tools are ready"
 
-build:
-	go build -ldflags '$(LDFLAGS)' -o bin/gomodel ./cmd/gomodel
+build: ensure-tmp
+	$(GO_ENV) go build -ldflags '$(LDFLAGS)' -o bin/gomodel ./cmd/gomodel
 # Run the application
-run:
-	LOG_LEVEL=$(LOG_LEVEL) SWAGGER_ENABLED=$(SWAGGER_ENABLED) go run -tags=swagger ./cmd/gomodel
+run: ensure-tmp
+	LOG_LEVEL=$(LOG_LEVEL) SWAGGER_ENABLED=$(SWAGGER_ENABLED) $(GO_ENV) go run -tags=swagger ./cmd/gomodel
 
 # Clean build artifacts
 clean:
 	rm -rf bin/
 
 # Tidy dependencies
-tidy:
-	go mod tidy
+tidy: ensure-tmp
+	$(GO_ENV) go mod tidy
 
 # Docker Compose: Redis, PostgreSQL, MongoDB, Adminer (no app image build)
 infra:
@@ -43,63 +62,63 @@ image:
 	docker compose --profile app up -d
 
 # Run unit tests only
-test:
-	go test ./cmd/... ./internal/... ./config/... -v
+test: ensure-tmp
+	$(GO_ENV) go test ./cmd/... ./internal/... ./config/... -v
 
 # Run unit tests with race detection and coverage
-test-race:
-	go test -v -race -coverprofile=coverage.out ./cmd/... ./internal/... ./config/...
+test-race: ensure-tmp
+	$(GO_ENV) go test -v -race -coverprofile=$(PROJECT_BUILD_ROOT)/coverage.out ./cmd/... ./internal/... ./config/...
 
 # Run dashboard JavaScript unit tests
 test-dashboard:
 	node --test internal/admin/dashboard/static/js/modules/*.test.cjs
 
 # Run e2e tests (uses an in-process mock LLM server; no Docker required)
-test-e2e:
-	go test -v -tags=e2e ./tests/e2e/...
+test-e2e: ensure-tmp
+	$(GO_ENV) go test -v -tags=e2e ./tests/e2e/...
 
 # Run integration tests (requires Docker)
-test-integration:
-	go test -v -tags=integration -timeout=10m ./tests/integration/...
+test-integration: ensure-tmp
+	$(GO_ENV) go test -v -tags=integration -timeout=10m ./tests/integration/...
 
 # Run contract tests (validates API response structures against golden files)
-test-contract:
-	go test -v -tags=contract -timeout=5m ./tests/contract/...
+test-contract: ensure-tmp
+	$(GO_ENV) go test -v -tags=contract -timeout=5m ./tests/contract/...
 
 # Run all tests including dashboard, e2e, integration, and contract tests
 test-all: test test-dashboard test-e2e test-integration test-contract
 
-perf-check:
-	go test -run '^TestHotPathPerfGuard$$' -count=1 -v ./tests/perf/...
+perf-check: ensure-tmp
+	$(GO_ENV) go test -run '^TestHotPathPerfGuard$$' -count=1 -v ./tests/perf/...
 
-perf-bench:
-	go test -bench=. -benchmem ./tests/perf/...
+perf-bench: ensure-tmp
+	$(GO_ENV) go test -bench=. -benchmem ./tests/perf/...
 
 # Record API responses for contract tests
 # Usage: OPENAI_API_KEY=sk-xxx make record-api
-record-api:
+record-api: ensure-tmp
 	@echo "Recording OpenAI chat completion..."
-	go run ./cmd/recordapi -provider=openai -endpoint=chat \
+	$(GO_ENV) go run ./cmd/recordapi -provider=openai -endpoint=chat \
 		-output=tests/contract/testdata/openai/chat_completion.json
 	@echo "Recording OpenAI models..."
-	go run ./cmd/recordapi -provider=openai -endpoint=models \
+	$(GO_ENV) go run ./cmd/recordapi -provider=openai -endpoint=models \
 		-output=tests/contract/testdata/openai/models.json
 	@echo "Done! Golden files saved to tests/contract/testdata/"
 
-swagger:
-	go run github.com/swaggo/swag/v2/cmd/swag init --generalInfo main.go \
+swagger: ensure-tmp
+	$(GO_ENV) go run github.com/swaggo/swag/v2/cmd/swag init --generalInfo main.go \
 		--dir cmd/gomodel,internal \
 		--output cmd/gomodel/docs \
 		--outputTypes go \
 		--parseDependency
 	$(MAKE) docs-openapi
 
-docs-openapi:
+docs-openapi: ensure-tmp
 	@command -v node >/dev/null 2>&1 || { echo "node is required to build docs; install from https://nodejs.org" >&2; exit 1; }
 	@command -v npx >/dev/null 2>&1 || { echo "npx is required; install npm (includes npx)" >&2; exit 1; }
-	@tmp_dir=$$(mktemp -d); \
+	@tmp_dir=$$(mktemp -d "$(PROJECT_RUNS_ROOT)/docs-openapi.XXXXXX"); \
 	trap 'rm -rf "$$tmp_dir"' EXIT; \
-	go run github.com/swaggo/swag/v2/cmd/swag init --quiet --generalInfo main.go \
+	$(GO_ENV) go run github.com/swaggo/swag/v2/cmd/swag init --quiet --generalInfo main.go \
 		--dir cmd/gomodel,internal \
 		--output "$$tmp_dir" \
 		--outputTypes json \
@@ -108,9 +127,9 @@ docs-openapi:
 	DOCS_API_SERVERS="$(DOCS_API_SERVERS)" node tools/openapi-postprocess.mjs docs/openapi.json
 
 # Run linter
-lint:
-	golangci-lint run --build-tags=swagger,e2e,integration,contract ./cmd/... ./config/... ./internal/... ./tests/...
+lint: ensure-tmp
+	$(GO_ENV) golangci-lint run --build-tags=swagger,e2e,integration,contract ./cmd/... ./config/... ./internal/... ./tests/...
 
 # Run linter with auto-fix
-lint-fix:
-	golangci-lint run --fix ./cmd/... ./config/... ./internal/...
+lint-fix: ensure-tmp
+	$(GO_ENV) golangci-lint run --fix ./cmd/... ./config/... ./internal/...
