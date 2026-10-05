@@ -71,31 +71,46 @@ func NewManager() *Manager {
 }
 
 func defaultTokenStorePath() string {
-	root := strings.TrimSpace(os.Getenv("PROJECT_TMP_ROOT"))
-	if root != "" && filepath.IsAbs(root) && filepath.Base(root) == canonicalProjectName {
+	if base := strings.TrimSpace(os.Getenv("PROJECT_TMP_BASE")); base != "" && filepath.IsAbs(base) {
+		candidate := filepath.Join(base, canonicalProjectName)
+		if root := strings.TrimSpace(os.Getenv("PROJECT_TMP_ROOT")); root == "" || filepath.Clean(root) == candidate {
+			return filepath.Join(candidate, "runs", "oauthproxy", "default", "gomodel-oauth-tokens.json")
+		}
+	}
+	if root := strings.TrimSpace(os.Getenv("PROJECT_TMP_ROOT")); root != "" && filepath.IsAbs(root) && filepath.Base(root) == canonicalProjectName {
 		return filepath.Join(root, "runs", "oauthproxy", "default", "gomodel-oauth-tokens.json")
 	}
-	for _, base := range []string{"/workspace/tmp", strings.TrimSpace(os.Getenv("RUNNER_TEMP")), strings.TrimSpace(os.Getenv("TMPDIR")), os.TempDir()} {
+
+	bases := []string{os.TempDir()}
+	if os.Getenv("CI") != "" || os.Getenv("GITHUB_ACTIONS") != "" || strings.TrimSpace(os.Getenv("RUNNER_TEMP")) != "" {
+		bases = []string{strings.TrimSpace(os.Getenv("RUNNER_TEMP")), strings.TrimSpace(os.Getenv("TMPDIR")), os.TempDir()}
+	} else if _, err := os.Stat("/workspace/tmp"); err == nil {
+		bases = []string{"/workspace/tmp", os.TempDir()}
+	}
+	for _, base := range bases {
 		if strings.TrimSpace(base) == "" {
 			continue
 		}
 		candidate := filepath.Join(base, canonicalProjectName)
-		parent := candidate
-		for {
-			if _, err := os.Stat(parent); err == nil {
-				break
-			}
-			next := filepath.Dir(parent)
-			if next == parent {
-				break
-			}
-			parent = next
-		}
-		if info, err := os.Stat(parent); err == nil && info.IsDir() {
+		if parentUsable(candidate) {
 			return filepath.Join(candidate, "runs", "oauthproxy", "default", "gomodel-oauth-tokens.json")
 		}
 	}
 	return filepath.Join(os.TempDir(), canonicalProjectName, "runs", "oauthproxy", "default", "gomodel-oauth-tokens.json")
+}
+
+func parentUsable(path string) bool {
+	parent := path
+	for {
+		if info, err := os.Stat(parent); err == nil {
+			return info.IsDir()
+		}
+		next := filepath.Dir(parent)
+		if next == parent {
+			return false
+		}
+		parent = next
+	}
 }
 
 func (m *Manager) UseStore(store CredentialStore) error {

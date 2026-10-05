@@ -19,14 +19,17 @@ Canonical project name: `go-model`.
 
 Resolve the disposable root once before exporting child temp/cache variables:
 
-1. If `PROJECT_TMP_ROOT` is set, it must be an absolute usable directory path ending in `/go-model`; invalid explicit overrides fail.
-2. Else use writable `/workspace/tmp/go-model` when available.
-3. Else use `${RUNNER_TEMP}/go-model`, then the original `${TMPDIR}/go-model`, then the platform temp directory plus `/go-model`.
+1. If `PROJECT_TMP_BASE` is set, append `/go-model`; the base must be absolute and the resulting root usable. If `PROJECT_TMP_ROOT` is also set, both must resolve to the same root.
+2. Else if `PROJECT_TMP_ROOT` is set, it must be an absolute usable directory path ending in `/go-model`; invalid explicit overrides fail.
+3. Else CI uses `${RUNNER_TEMP}/go-model`, then the original `${TMPDIR}/go-model`, then the platform temp directory plus `/go-model`, even if `/workspace/tmp` exists.
+4. Else local use prefers writable `/workspace/tmp/go-model`, then platform temp plus `/go-model`.
 
-Use `scripts/project-tmp.sh` for repo-local resolution; it delegates to `/workspace/tools/project-tmp.sh` when available and includes the same fallback logic for portable CI.
+Use `scripts/project-tmp.sh` for repo-local resolution; it is self-contained for portable CI and mirrors `/workspace/tools/project-tmp.sh` semantics.
 
 - Rebuildable caches: `${PROJECT_TMP_ROOT}/cache/<tool>/`.
 - Generated build output/scratch: `${PROJECT_TMP_ROOT}/build/`.
+- Test scratch: `${PROJECT_TMP_ROOT}/tests/`.
+- Disposable logs: `${PROJECT_TMP_ROOT}/logs/`.
 - Isolated run scratch: `${PROJECT_TMP_ROOT}/runs/<purpose>/<run-id>/`.
 - Do not use bare `/tmp`, home-directory caches, or ad-hoc top-level workspace paths for reproducible build caches or disposable temporary files.
 - Route `TMPDIR`, `GOCACHE`, `GOMODCACHE`, `GOTOOLCHAIN`, script output directories, local model cache directories, and test stack scratch through the resolved root before running tests/builds/scripts.
